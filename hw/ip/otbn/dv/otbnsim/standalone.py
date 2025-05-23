@@ -18,6 +18,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('elf')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--dump-rtl-sim', action="store_true")
     parser.add_argument(
         '--dump-dmem',
         metavar="FILE",
@@ -45,7 +46,7 @@ def main() -> int:
     collect_stats = args.dump_stats is not None
 
     sim = StandaloneSim()
-    exp_end_addr = load_elf(sim, args.elf)
+    exp_end_addr = load_elf(sim, args.elf, args.dump_rtl_sim)
     key0 = int((str("deadbeef") * 12), 16)
     key1 = int((str("baadf00d") * 12), 16)
     sim.state.wsrs.set_sideload_keys(key0, key1)
