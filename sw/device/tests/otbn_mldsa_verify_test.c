@@ -13,9 +13,9 @@
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
-#include "sw/device/tests/pq-crystals/dilithium_opentitan/ref/params.h"
-#include "sw/device/tests/pq-crystals/dilithium_opentitan/ref/sign.h"
-#include "sw/device/tests/pq-crystals/dilithium_opentitan/ref/fips202.h"
+#include "sw/device/tests/pq-crystals/dilithium_opentitan/lowram/params.h"
+#include "sw/device/tests/pq-crystals/dilithium_opentitan/lowram/sign.h"
+#include "sw/device/tests/pq-crystals/dilithium_opentitan/lowram/fips202.h"
 
 #ifndef NTESTS 
 #define NTESTS 10

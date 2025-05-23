@@ -5817,9 +5817,9 @@ opentitan_test(
         "//sw/otbn/crypto/tests:otbn_mldsa_base_sign_test",
         "//sw/otbn/crypto/tests:otbn_mldsa_isaext_sign_test",
         # C libraries
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:params",
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:sign",
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:fips202",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:params",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:sign",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:fips202",
     ],
 )
 
@@ -5848,8 +5848,8 @@ opentitan_test(
         "//sw/otbn/crypto/tests:otbn_mldsa_base_verify_test",
         "//sw/otbn/crypto/tests:otbn_mldsa_isaext_verify_test",
         # C libraries
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:params",
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:sign",
-        "//sw/device/tests/pq-crystals/dilithium_opentitan/ref:fips202",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:params",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:sign",
+        "//sw/device/tests/pq-crystals/dilithium_opentitan/lowram:fips202",
     ],
 )
