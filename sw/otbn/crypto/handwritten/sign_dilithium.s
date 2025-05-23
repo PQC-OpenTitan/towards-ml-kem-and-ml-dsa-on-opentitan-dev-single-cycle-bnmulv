@@ -131,15 +131,15 @@
 .equ w31, bn0
 
 /* Index of the Keccak command special register. */
-#define KECCAK_CMD_REG 0x7dc
-/* Command to start a SHAKE-128 operation. */
-#define SHAKE128_START_CMD 0x1d
-/* Command to start a SHAKE-256 operation. */
-#define SHAKE256_START_CMD 0x5d
-/* Command to end an ongoing Keccak operation of any kind. */
-#define KECCAK_DONE_CMD 0x16
-/* Index of the Keccak write-length special register. */
-#define KECCAK_WRITE_LEN_REG 0x7e0
+#define KECCAK_CFG_REG 0x7d9
+/* Config to start a SHAKE-128 operation. */
+#define SHAKE128_CFG 0x2
+/* Config to start a SHAKE-256 operation. */
+#define SHAKE256_CFG 0xA
+/* Config to start a SHA3_256 operation. */
+#define SHA3_256_CFG 0x8
+/* Config to start a SHA3_512 operation. */
+#define SHA3_512_CFG 0x10
 
 /* Macros */
 .macro push reg
@@ -152,7 +152,7 @@
     addi sp, sp, 4     /* Increment stack pointer by 4 bytes */
 .endm
 
-/**
+/*
  * Send a variable-length message to the Keccak core.
  *
  * Expects the Keccak core to have already received a `start` command matching
@@ -169,33 +169,34 @@
  */
 keccak_send_message:
   /* Compute the number of full 256-bit message chunks.
-       t0 <= x11 >> 5 = floor(len / 32) */
-  srli     t0, x11, 5
+  t0 <= x11 >> 5 = floor(len / 32) */
+  srli t0, x11, 5
 
   /* Write all full 256-bit sections of the test message. */
-  beq t0, zero, _no_full_wdr
-  loop     t0, 2
-    /* w0 <= dmem[x10..x10+32] = msg[32*i..32*i-1]
-       x10 <= x10 + 32 */
-    bn.lid   x0, 0(x10++)
-    /* Write to the KECCAK_MSG wide special register (index 8).
+  beq  t0, zero, _no_full_wdr
+
+  loop t0, 2
+      /* w0 <= dmem[x10..x10+32] = msg[32*i..32*i-1]
+         x10 <= x10 + 32 */
+      bn.lid  x0, 0(x10++)
+      /* Write to the KECCAK_MSG wide special register (index 9).
          KECCAK_MSG <= w0 */
-    bn.wsrw  0x8, w0
+      bn.wsrw 0x9, w0
+
 _no_full_wdr:
   /* Compute the remaining message length.
-       t0 <= x10 & 31 = len mod 32 */
-  andi     t0, x11, 31
+       t0 <= x11 & 31 = len mod 32 */
+  andi t0, x11, 31
 
   /* If the remaining length is zero, return early. */
-  beq      t0, x0, _keccak_send_message_end
+  beq t0, x0, _keccak_send_message_end
 
-  /* Partial write: set KECCAK_WRITE_LEN special register before sending. */
-  csrrw    x0, KECCAK_WRITE_LEN_REG, t0
-  bn.lid   x0, 0(x10)
-  bn.wsrw  0x8, w0
+  bn.lid  x0, 0(x10)
+  bn.wsrw 0x9, w0
 
   _keccak_send_message_end:
   ret
+
 /**
  * Dilithium Sign
  *
@@ -366,16 +367,32 @@ sign_dilithium:
     /* CRH(tr, msg) */
 
     /* Initialize a SHAKE256 operation. */
-    addi  t0, zero, SHAKE256_START_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
+    li a1, TRBYTES
+    addi a1, a1, 2 /* Add len of ctxlen */
+    
+    li t2, STACK_CTXLEN
+    add t2, fp, t2
+    lw t2, 0(t2) /* t2 <= ctxlen */
+    add a1, a1, t2 /* Add len(ctx) */
 
+    li  t2, STACK_MSGLEN
+    add t2, fp, t2
+    lw  t2, 0(t2)
+    add a1, a1, t2 /* Add msglen */
+
+    slli  t0, a1, 5
+    addi  t0, t0, SHAKE256_CFG
+    csrrw zero, KECCAK_CFG_REG, t0
+
+    push a1
     /* Send TR to the Keccak core. */
     li  a1, TRBYTES /* set message length to TRBYTES */
     li  a0, STACK_TR
     add a0, fp, a0
     jal x1, keccak_send_message
+    pop a1
 
-    /* Absorb context len */
+    /* Copy ctxlen (2B)||ctx (???B) to continous memory location */
     li t2, STACK_CTXLEN
     add a0, fp, t2
     lw t2, 0(a0) /* t2 <= ctxlen */
@@ -392,21 +409,44 @@ sign_dilithium:
 
     /* Add 0-byte */
     slli t2, t2, 8
-    sw t2, 0(a0)
-    li a1, 2
-    jal  x1, keccak_send_message
+    /* Clear upper bits */
+    slli t2, t2, 16
+    srli t2, t2, 16
 
-    /* Absorb context */
-    li t2, STACK_CTXLEN
-    add t2, fp, t2
-    lw a1, 0(t2) /* a1 <= ctxlen */
-    srli a1, a1, 8
-    li t2, STACK_CTX
-    add a0, fp, t2
+    /* Get ctx pointer */
+    li a0, STACK_CTX
+    add a0, fp, a0
     lw a0, 0(a0) /* a0 <= *ctx */
-    jal  x1, keccak_send_message
-    
-    /* Send MSG to the Keccak core. */
+
+    /* Load first ctx word and merge it with the 2 bytes from 0||ctxlen */
+    lw t5, 0(a0)
+    slli t5, t5, 16
+    or t2, t5, t2
+    sw t2, 0(t3) /* First store to buffer */
+    addi t3, t3, 4 /* First write done */
+
+    addi t4, t4, -1
+
+    LOOP t4, 8
+        /* Load word from ctx: c */
+        lw t2, 0(a0)
+        srli t2, t2, 16
+        /* Load next word from ctx: c' */
+        lw t5, 4(a0)
+        slli t5, t5, 16 /* Shift lower bits to the top half for merging */
+        addi a0, a0, 4/* Increment address */
+
+        /* Merge remaining two bytes from c with first two bytes of c' */
+        or t2, t2, t5
+        /* Store c[2:]||c'[:2] to buffer */
+        sw t2, 0(t3)
+        addi t3, t3, 4
+
+    /* Use last 2B from the ctx that will be left over to merge with the message */
+    lw t2, 0(a0)
+    srli t2, t2, 16
+
+    /* Load first word of the message and combinde with remainder from ctx */
     li  a0, STACK_MSG
     add a0, fp, a0
     lw  a0, 0(a0) /* loads msg pointer */
@@ -467,14 +507,12 @@ sign_dilithium:
     /* Write SHAKE output to dmem */
     li      a0, STACK_MU
     add     a0, fp, a0
-    bn.wsrr w8, 0x9     /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA     /* KECCAK_DIGEST */
     bn.sid  t1, 0(a0++) /* Store into mu buffer */
-    bn.wsrr w8, 0x9     /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA     /* KECCAK_DIGEST */
     bn.sid  t1, 0(a0++) /* Store into mu buffer */
 
     /* Finish the SHAKE-256 operation. */
-    addi  t0, zero, KECCAK_DONE_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
 
     /* Expand matrix */
     /* Initialize the nonce */
@@ -505,8 +543,12 @@ sign_dilithium:
 #endif
 
     /* Initialize a SHAKE256 operation. */
-    addi  t0, zero, SHAKE256_START_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
+    addi  a1, zero, SEEDBYTES
+    addi  a1, a1, RNDBYTES
+    addi  a1, a1, CRHBYTES
+    slli  t0, a1, 5
+    addi  t0, t0, SHAKE256_CFG
+    csrrw zero, KECCAK_CFG_REG, t0
 
     /* Send key to the Keccak core. */
     li  a1, SEEDBYTES /* set message length to SEEDBYTES */
@@ -531,14 +573,12 @@ sign_dilithium:
 
     li      a0, STACK_RHOPRIME
     add     a0, fp, a0
-    bn.wsrr w8, 0x9     /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA     /* KECCAK_DIGEST */
     bn.sid  t1, 0(a0++) /* Store into rhoprime buffer */
-    bn.wsrr w8, 0x9     /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA     /* KECCAK_DIGEST */
     bn.sid  t1, 0(a0++) /* Store into rhoprime buffer */
 
     /* Finish the SHAKE-256 operation. */
-    addi  t0, zero, KECCAK_DONE_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
 
     /* NTT(s1) */
     li   a0, STACK_S1
@@ -707,8 +747,12 @@ _rej_sign_dilithium:
 
     /* Random oracle */
     /* Initialize a SHAKE256 operation. */
-    addi  t0, zero, SHAKE256_START_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
+    addi  a1, zero, CRHBYTES
+    LOOPI K, 1
+        addi a1, a1, POLYW1_PACKEDBYTES
+    slli  t0, a1, 5
+    addi  t0, t0, SHAKE256_CFG
+    csrrw zero, KECCAK_CFG_REG, t0
 
     /* Send mu to the Keccak core. */
     li  a1, CRHBYTES /* set mu length to CRHBYTES */
@@ -735,7 +779,7 @@ _rej_sign_dilithium:
     li t1, 8
 
 #if CTILDEBYTES == 32
-    bn.wsrr w8, 0x9   /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA   /* KECCAK_DIGEST */
     addi    a0, s0, 0 /* restore a0 */
     /* Get temp buffer */
     li   t0, STACK_CP
@@ -749,7 +793,7 @@ _rej_sign_dilithium:
     
     addi a0, a0, -CTILDEBYTES
 #elif CTILDEBYTES == 48
-    bn.wsrr w8, 0x9   /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA   /* KECCAK_DIGEST */
     addi    a0, s0, 0 /* restore a0 */
 
     /* Get temp buffer */
@@ -762,7 +806,7 @@ _rej_sign_dilithium:
         addi t0, t0, 4
         addi a0, a0, 4
 
-    bn.wsrr w8, 0x9   /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA   /* KECCAK_DIGEST */
 
     bn.sid  t1, 0(t0) /* Store CTILDE into temp buffer */
     LOOPI 4, 4
@@ -773,7 +817,7 @@ _rej_sign_dilithium:
     
     addi a0, a0, -CTILDEBYTES
 #elif CTILDEBYTES == 64
-    bn.wsrr w8, 0x9   /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA   /* KECCAK_DIGEST */
     addi    a0, s0, 0 /* restore a0 */
 
     /* Get temp buffer */
@@ -786,7 +830,7 @@ _rej_sign_dilithium:
         addi t0, t0, 4
         addi a0, a0, 4
 
-    bn.wsrr w8, 0x9   /* KECCAK_DIGEST */
+    bn.wsrr w8, 0xA   /* KECCAK_DIGEST */
 
     bn.sid  t1, 0(t0) /* Store CTILDE into temp buffer */
     LOOPI 8, 4
@@ -799,8 +843,6 @@ _rej_sign_dilithium:
 #endif
 
     /* Finish the SHAKE-256 operation. */
-    addi  t0, zero, KECCAK_DONE_CMD
-    csrrw zero, KECCAK_CMD_REG, t0
 
     /* Challenge */
     /* CTILDE was temporarily stored in STACK_CP. Re-use here because it is aligned,
