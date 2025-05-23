@@ -13,9 +13,9 @@
 
 #include "hw/top_earlgrey/sw/autogen/top_earlgrey.h"
 
-#include "sw/device/tests/pq-crystals/kyber_ref/params.h"
-#include "sw/device/tests/pq-crystals/kyber_ref/kem.h"
-#include "sw/device/tests/pq-crystals/kyber_ref/fips202.h"
+#include "sw/device/tests/pq-crystals/kyber_opentitan/ref/params.h"
+#include "sw/device/tests/pq-crystals/kyber_opentitan/ref/kem.h"
+#include "sw/device/tests/pq-crystals/kyber_opentitan/ref/fips202.h"
 
 #ifndef NTESTS 
 #define NTESTS 1

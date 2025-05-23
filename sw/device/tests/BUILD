@@ -5692,9 +5692,9 @@ opentitan_test(
         "//sw/otbn/crypto/tests:otbn_mlkem_base_keypair_test",
         "//sw/otbn/crypto/tests:otbn_mlkem_isaext_keypair_test",
         # C libraries
-        "//sw/device/tests/pq-crystals/kyber_ref:params",
-        "//sw/device/tests/pq-crystals/kyber_ref:kem",
-        "//sw/device/tests/pq-crystals/kyber_ref:fips202",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:params",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:kem",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:fips202",
     ],
 )
 
@@ -5723,9 +5723,9 @@ opentitan_test(
         "//sw/otbn/crypto/tests:otbn_mlkem_base_encap_test",
         "//sw/otbn/crypto/tests:otbn_mlkem_isaext_encap_test",
         # C libraries
-        "//sw/device/tests/pq-crystals/kyber_ref:params",
-        "//sw/device/tests/pq-crystals/kyber_ref:kem",
-        "//sw/device/tests/pq-crystals/kyber_ref:fips202",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:params",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:kem",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:fips202",
     ],
 )
 
@@ -5754,9 +5754,9 @@ opentitan_test(
         "//sw/otbn/crypto/tests:otbn_mlkem_base_decap_test",
         "//sw/otbn/crypto/tests:otbn_mlkem_isaext_decap_test",
         # C libraries
-        "//sw/device/tests/pq-crystals/kyber_ref:params",
-        "//sw/device/tests/pq-crystals/kyber_ref:kem",
-        "//sw/device/tests/pq-crystals/kyber_ref:fips202",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:params",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:kem",
+        "//sw/device/tests/pq-crystals/kyber_opentitan/ref:fips202",
     ],
 )
 
