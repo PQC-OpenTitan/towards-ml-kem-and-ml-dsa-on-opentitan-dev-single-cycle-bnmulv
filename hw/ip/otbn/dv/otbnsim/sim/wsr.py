@@ -390,8 +390,10 @@ class KmacBlock:
     # https://opentitan.org/book/hw/ip/kmac/doc/theory_of_operation.html#keccak-round
     _KECCAK_CYCLES_PER_ROUND = 4
     _KECCAK_NUM_ROUNDS = 24
-    # It takes 2 cycles until the finished digest is exposed to the application interface.
+    # It takes 3 cycles until the finished digest is exposed to the application interface.
     _KECCAK_LATENCY_DIGEST_EXPOSED = 3
+    # It takes 2 additional cycles when the Keccak permutation logic is done for operations to continue (e.g. padding logic to resume)
+    _KECCAK_LATENCY_DONE = 2
 
     # Number of bytes that can be sent to KMAC per cycle over the application
     # interface.
@@ -503,7 +505,6 @@ class KmacBlock:
         if DEBUG_KMAC:
             print("\tKMAC message done, pending process")
         self._pending_process = True
-        self._wait_cycles_for_padding_start = 6
 
     def is_idle(self) -> bool:
         return self._status == self._STATUS_IDLE
@@ -605,7 +606,7 @@ class KmacBlock:
         return self._APP_INTF_FIFO_SIZE_BYTES - len(self._app_intf_fifo)
 
     def app_intf_fifo_ready(self) -> bool:
-        return self._app_intf_fifo_ready
+        return self._app_intf_fifo_ready and (len(self._app_intf_fifo) == 0)
 
     def write_to_app_intf_fifo(self, msg: bytes) -> bool:
         '''Appends new message data to an ongoing hashing operation.
@@ -622,10 +623,14 @@ class KmacBlock:
         self._app_intf_fifo += msg
         return True
 
-    def _start_keccak_core(self) -> None:
+    def _start_keccak_core(self, absorbed) -> None:
         if DEBUG_KMAC:
             print("\tStarting round logic")
-        self._core_cycles_remaining = self._KECCAK_NUM_ROUNDS * self._KECCAK_CYCLES_PER_ROUND + self._KECCAK_LATENCY_DIGEST_EXPOSED
+        if absorbed:
+            self._core_cycles_remaining = self._KECCAK_NUM_ROUNDS * self._KECCAK_CYCLES_PER_ROUND + self._KECCAK_LATENCY_DIGEST_EXPOSED
+        else:
+            self._core_cycles_remaining = self._KECCAK_NUM_ROUNDS * self._KECCAK_CYCLES_PER_ROUND + self._KECCAK_LATENCY_DONE
+
 
     def _core_is_busy(self) -> None:
         return self._core_cycles_remaining is not None and self._core_cycles_remaining > 0
@@ -650,7 +655,7 @@ class KmacBlock:
         if DEBUG_KMAC:
             print("\tKMAC START PROCESS")
         self._status = self._STATUS_SQUEEZE
-        self._start_keccak_core()
+        self._start_keccak_core(True)
 
     def run(self) -> None:
         '''Issues a `run` command to the KMAC block.
@@ -664,7 +669,7 @@ class KmacBlock:
         if not self.is_squeezing():
             raise ValueError('KMAC: Cannot issue `run` command in '
                              f'{self._status} status.')
-        self._start_keccak_core()
+        self._start_keccak_core(True)
         self._read_offset = 0
 
     def done(self) -> None:
@@ -815,7 +820,7 @@ class KmacBlock:
             if DEBUG_KMAC:
                 print("\tProcessing")
         elif self._core_pending_bytes == self._rate_bytes:
-            self._start_keccak_core()
+            self._start_keccak_core(False)
             self._core_pending_bytes = 0
             self._core_pending_bytes_next = 0
             if self._pending_process and not self._msg_fifo and not self._padded:
@@ -835,12 +840,14 @@ class KmacBlock:
 
     def max_read_bytes(self) -> int:
         '''Returns the maximum readable bytes before a `run` command.'''
-        if self._strength == self._STRENGTH_512:
-            return 64 - self._read_offset
-        elif self._strength == self._STRENGTH_256:
-            return 32 - self._read_offset
-        else:
-            return self._rate_bytes - self._read_offset
+        # SHA3
+        if self._mode == self._MODE_SHA3:
+            if self._strength == self._STRENGTH_512:
+                return 64 - self._read_offset
+            elif self._strength == self._STRENGTH_256:
+                return 32 - self._read_offset
+        # XOFs
+        return None
 
     def read(self, num_bytes: int) -> bytes:
         if self.max_read_bytes() is not None and num_bytes > self.max_read_bytes():
@@ -1069,6 +1076,7 @@ class WSRFile:
             9: self.KMAC_MSG,
             10: self.KMAC_DIGEST
             }
+
 
     def on_start(self) -> None:
         '''Called at the start of an operation
