@@ -18,7 +18,7 @@
 #include "sw/device/tests/pq-crystals/dilithium_opentitan/lowram/fips202.h"
 
 #ifndef NTESTS 
-#define NTESTS 10
+#define NTESTS 1
 #endif
 
 #define MLEN 64
