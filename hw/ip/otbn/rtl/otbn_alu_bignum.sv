@@ -1,4 +1,4 @@
-// Copyright lowRISC contributors (OpenTitan project).
+// Copyright lowRISC contributors.
 // Licensed under the Apache License, Version 2.0, see LICENSE for details.
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Authors of "Towards ML-KEM & ML-DSA on OpenTitan" (https://eprint.iacr.org/2024/1192)
@@ -69,7 +69,7 @@
  *              Y result
  */
 
-/* verilator lint_off UNOPTFLAT */
+
 module otbn_alu_bignum
   import otbn_pkg::*;
 (
@@ -538,12 +538,12 @@ module otbn_alu_bignum
   end
 
   // STATUS
+  logic kmac_new_cfg_q;
   logic [BaseIntgWidth-1:0] kmac_status_intg_q;
   logic [BaseIntgWidth-1:0] kmac_status_intg_d;
   logic [31:0]              kmac_status_no_intg_d;
   logic [1:0]               kmac_status_intg_err;
 
-  logic kmac_new_cfg_q;
   assign kmac_status_no_intg_d = kmac_new_cfg_q ? 32'b0 : {29'b0, kmac_app_rsp_i.error, kmac_app_rsp_i.ready, kmac_app_rsp_i.done};
 
   prim_secded_inv_39_32_enc u_kmac_status_secded_enc (
@@ -647,7 +647,6 @@ module otbn_alu_bignum
   logic                           kmac_last_msg_all_bytes_valid;
   logic [kmac_pkg::MsgStrbW-1:0]  kmac_last_msg_strb;
 
-  
   logic kmac_msg_active_q;
   logic kmac_cfg_active_q;
   logic kmac_msg_valid_q;
@@ -945,6 +944,8 @@ module otbn_alu_bignum
   logic [15:0]       shifter_vec_in_orig [15:0];
   logic [15:0]       shifter_vec_in_reverse [15:0];
   logic [15:0]       shifter_vec_out [15:0];
+  logic [31:0]       shifter_vec_tmp [15:0];
+  logic [31:0]       shifter_vec_tmp_shifted [15:0];
   logic [15:0]       shifter_vec_out_reverse [15:0];
   logic [WLEN-1:0]   shifter_vec_res;
   logic              shifter_selvector_i;
@@ -978,7 +979,6 @@ module otbn_alu_bignum
 
   assign shifter_bignum_out = shifter_bignum_in >> alu_predec_bignum_i.shift_amt;
 
-  // VECTOR SHIFTER
   for (genvar i = 0; i < WLEN; i++) begin : g_shifter_bignum_out_lower_reverse
     assign shifter_bignum_out_lower_reverse[i] = shifter_bignum_out[WLEN-i-1];
   end
@@ -999,8 +999,10 @@ module otbn_alu_bignum
                                                                                        (i % 2 == 1) ? shifter_vec_in_reverse[i-1] :
                                                                                                       shifter_vec_in_reverse[i+1];
     // Shifter below either shifts as 16 or 32 bit vectors
+    assign shifter_vec_tmp[i] = {shifter_vec_in[i+1], shifter_vec_in[i]};
+    assign shifter_vec_tmp_shifted[i] = shifter_vec_tmp[i] >> alu_predec_bignum_i.shift_amt;
     assign shifter_vec_out[i] = (shifter_selvector_i | (i % 2 == 1)) ? (shifter_vec_in[i] >> alu_predec_bignum_i.shift_amt) :
-                                                                       {{shifter_vec_in[i+1], shifter_vec_in[i]} >> alu_predec_bignum_i.shift_amt}[WLEN/16-1:0];
+                                                                       shifter_vec_tmp_shifted[i][15:0];
 
     for (genvar j=0; j<WLEN/16; ++j) begin : g_shifter_vec_reverse_output
       assign shifter_vec_out_reverse[i][j] = shifter_selvector_i ? shifter_vec_out[i][WLEN/16-j-1] :
@@ -1308,7 +1310,7 @@ module otbn_alu_bignum
     adder_y_op_b_invert       = 1'b0;
     adder_update_flags_en_raw = 1'b0;
     logic_update_flags_en_raw = 1'b0;
-    expected_vector_type = alu_vector_type_t'('0);
+    expected_vector_type = alu_8s;
     expected_trn_type = alu_trn_type_t'('0);
     expected_vector_sel = 1'b0;
     expected_adder_x_en             = 1'b0;
